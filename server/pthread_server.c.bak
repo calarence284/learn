@@ -1,0 +1,100 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <pthread.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
+void pthread_fun(int *client_sockfd1);
+
+int main(int argc, char** argv)
+{
+	int len, sin_size;
+	int server_sockfd, client_sockfd;
+	struct sockaddr_in server_addr, client_addr;
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(8080);
+	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	bzero(&(server_addr.sin_zero), 8);
+
+	if ((server_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	{
+		perror("socket error");
+		exit(1);
+	}
+
+	if (bind(server_sockfd, (struct sockaddr*)&server_addr, sizeof(struct sockaddr)) == -1)
+	{
+		perror("bind error");
+		exit(1);
+	}
+	
+	if (listen(server_sockfd, 10) == -1)
+	{
+		perror("listen error");
+		exit(1);
+	}
+
+	sin_size = sizeof(client_addr);
+
+	while (1) {
+		pthread_t pid;
+		
+		client_sockfd = accept(server_sockfd, (struct sockaddr*)&client_addr, &sin_size);
+
+		if (client_sockfd == -1)
+		{
+			perror("accept error");
+			continue;
+		}
+
+		int *temp = (int *)malloc(sizeof(int));
+		*temp = client_sockfd;
+		pthread_create(&pid, NULL, (void*)pthread_fun, temp);
+	}
+	close(client_sockfd);
+	close(server_sockfd);
+	return 0;
+}
+
+void pthread_fun(int *client_sockfd1)
+{
+	char buf[BUFSIZ];
+	int len;
+
+	memset(buf, 0, BUFSIZ);
+
+	while (1) {
+		printf("client_sockfd1 = %d\n", *client_sockfd1);
+
+		len = recv(*client_sockfd1, buf, BUFSIZ, 0);
+		if (len == 0)
+		{
+			printf("One client over");
+			close(*client_sockfd1);
+			pthread_exit(NULL);
+		}
+
+		if (len < 0)
+			perror("recv error");
+		buf[len] = '\0';
+		
+		if (!strcmp(buf, "quit"))
+		{
+			close(*client_sockfd1);
+			pthread_exit(NULL);
+		}
+
+		printf("recv message >> %s\n", buf);
+
+		if (send(*client_sockfd1, buf, strlen(buf), 0) == -1)
+		{
+			perror("send error");
+		}
+	}
+}
